@@ -12,6 +12,8 @@ from backend.common.models import Job, ScrapeRun
 from backend.common.skills import extract_skills
 from backend.embedding.client import get_embedding_client
 from backend.scraper.celery_app import celery_app
+from backend.scraper.dlq import push_to_dlq
+from backend.scraper.metrics import record_task_failure, record_task_retry, record_task_success
 from backend.scraper.sources import get_source
 
 
@@ -74,6 +76,7 @@ def scrape_source(self, source_name: str = "synthetic", count: int = 350, seed: 
             run.finished_at = datetime.now(timezone.utc)
             db.commit()
 
+        record_task_success(self.name)
         return {"run_id": run_id, "found": len(postings), "new": len(new_jobs), "indexed": indexed}
 
     except Exception as exc:  # noqa: BLE001
@@ -84,6 +87,21 @@ def scrape_source(self, source_name: str = "synthetic", count: int = 350, seed: 
                 run.error = str(exc)[:2000]
                 run.finished_at = datetime.now(timezone.utc)
                 db.commit()
+
+        if self.request.retries >= self.max_retries:
+            # Retries exhausted: record to the dead-letter queue instead of
+            # silently dropping the task, so a human (or an automated
+            # replay job) can inspect and re-dispatch it later.
+            push_to_dlq(
+                task_name=self.name,
+                args={"source_name": source_name, "count": count, "seed": seed},
+                error=str(exc),
+                run_id=run_id,
+            )
+            record_task_failure(self.name)
+            raise
+
+        record_task_retry(self.name)
         raise self.retry(exc=exc)
 
 
@@ -96,6 +114,16 @@ def index_jobs(self, ids: list[int], texts: list[str]) -> int:
         with SessionLocal() as db:
             db.query(Job).filter(Job.id.in_(ids)).update({Job.embedded: True}, synchronize_session=False)
             db.commit()
+        record_task_success(self.name)
         return added
     except Exception as exc:  # noqa: BLE001
+        if self.request.retries >= self.max_retries:
+            push_to_dlq(
+                task_name=self.name,
+                args={"ids": ids, "texts": texts},
+                error=str(exc),
+            )
+            record_task_failure(self.name)
+            raise
+        record_task_retry(self.name)
         raise self.retry(exc=exc)

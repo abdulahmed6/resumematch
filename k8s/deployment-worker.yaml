@@ -1,0 +1,52 @@
+# See deployment-embedding.yaml's header comment for the container-image
+# caveat.
+#
+# replicas: 3 is the steady-state baseline (mirrors the "3 parallel worker
+# nodes" in docker-compose.yml / the resume bullet). scaledobject-worker.yaml
+# lets KEDA scale this *beyond* the baseline when the Celery broker queue
+# backs up, and back down to this floor when it's quiet -- see that file's
+# minReplicaCount, which matches this `replicas` value.
+#
+# No liveness/readiness probe: this is a queue consumer, not an HTTP server,
+# so there's no port to probe. (Celery does have its own worker health
+# concepts -- e.g. `celery inspect ping` -- that could be wired into an exec
+# probe later; not done here to keep this pass scoped to what's tested.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: resumematch
+  labels:
+    app: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/abdulahmed6/resumematch-backend:latest
+          command:
+            - celery
+            - -A
+            - backend.scraper.celery_app.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=2
+          envFrom:
+            - configMapRef:
+                name: resumematch-config
+            - secretRef:
+                name: resumematch-secrets
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

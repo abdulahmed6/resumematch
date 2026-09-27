@@ -1,0 +1,20 @@
+# Non-secret settings shared by gateway / embedding / scraper-api / worker /
+# beat. Mirrors the RM_-prefixed settings in backend/common/config.py and
+# docker-compose.yml's x-backend-env block.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resumematch-config
+  namespace: resumematch
+data:
+  RM_ENV: "prod"
+  RM_CELERY_EAGER: "false"
+  RM_EMBEDDING_URL: "http://embedding:8001"
+  RM_EMBEDDER_BACKEND: "hashing"   # switch to sentence-transformers only if
+                                    # that optional dependency is installed
+                                    # in the image (see requirements.txt)
+  RM_EMBEDDING_DIM: "384"
+  RM_FAISS_INDEX_PATH: "/data/faiss.index"
+  RM_SCRAPE_BATCH_SIZE: "350"
+  RM_SCRAPE_INTERVAL_MINUTES: "60"
+  RM_CORS_ORIGINS: "*"

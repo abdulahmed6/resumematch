@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 
 import numpy as np
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
 from backend.common.config import get_settings
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ResumeMatch Embedding Service", lifespan=lifespan)
+Instrumentator().instrument(app).expose(app)  # GET /metrics
 
 
 @app.get("/healthz")

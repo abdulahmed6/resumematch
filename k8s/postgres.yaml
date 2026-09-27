@@ -1,0 +1,79 @@
+# Dev/test convenience only -- an in-cluster, single-replica Postgres with no
+# backups and no HA. Fine for trying the rest of the manifests on kind/minikube.
+# For anything you'd call "production," point RM_DATABASE_URL (in secret.yaml)
+# at a managed instance (RDS, Cloud SQL, etc.) instead and don't apply this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: resumematch
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single PVC writer -- never roll this as RollingUpdate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: resumematch
+            - name: POSTGRES_DB
+              value: resumematch
+            - name: POSTGRES_PASSWORD
+              # Dev/test convenience only (see file header) -- matches the
+              # RM_DATABASE_URL credentials baked into secret.example.yaml's
+              # comments. Not sourced from the Secret: the Secret only holds
+              # the two DSN-style settings the app itself reads.
+              value: resumematch
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "resumematch"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "resumematch"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: resumematch
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: resumematch
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

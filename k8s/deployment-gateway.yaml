@@ -1,0 +1,52 @@
+# See deployment-embedding.yaml's header comment for the container-image
+# caveat -- there's no CI build/push step yet, build and push your own first.
+#
+# Stateless: safe to run multiple replicas and to let the HPA in
+# hpa-gateway.yaml scale it on CPU.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: resumematch
+  labels:
+    app: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/abdulahmed6/resumematch-backend:latest
+          command: ["uvicorn", "backend.gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: resumematch-config
+            - secretRef:
+                name: resumematch-secrets
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

@@ -1,0 +1,51 @@
+# Dev/test convenience only -- single-replica, no persistence, no auth. Same
+# caveat as postgres.yaml: fine for kind/minikube, not a production substitute
+# for a managed Redis (ElastiCache / Upstash / Memorystore). This Redis backs
+# BOTH the Celery broker/result-backend and the DLQ (Redis Streams) -- see
+# backend/scraper/dlq.py and backend/scraper/celery_app.py.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: resumematch
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: resumematch
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

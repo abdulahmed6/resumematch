@@ -1,0 +1,88 @@
+# NOTE on the container image: there's no CI step in this repo that builds
+# and pushes an image yet (docker-compose.yml builds it locally from
+# docker/backend.Dockerfile). Build and push your own before applying these
+# manifests, e.g.:
+#   docker build -f docker/backend.Dockerfile -t ghcr.io/<you>/resumematch-backend:latest .
+#   docker push ghcr.io/<you>/resumematch-backend:latest
+# then update the `image:` lines in this directory (or override via
+# kustomize's images: field in kustomization.yaml) to match.
+#
+# replicas is pinned to 1: the embedding service owns a local FAISS index
+# file (RM_FAISS_INDEX_PATH) with no locking or replication between
+# processes -- see backend/embedding/service.py's VectorIndex.save()/.load().
+# Running >1 replica against the same file, or on separate PVs, means each
+# replica sees a different index. Scaling this service is future work
+# (candidates: a shared read-replica index rebuilt periodically, or moving
+# to a real vector DB); it's out of scope for this pass.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding
+  namespace: resumematch
+  labels:
+    app: embedding
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single PVC writer, same reasoning as postgres.yaml
+  selector:
+    matchLabels:
+      app: embedding
+  template:
+    metadata:
+      labels:
+        app: embedding
+    spec:
+      containers:
+        - name: embedding
+          image: ghcr.io/abdulahmed6/resumematch-backend:latest
+          command: ["uvicorn", "backend.embedding.service:app", "--host", "0.0.0.0", "--port", "8001"]
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: resumematch-config
+            - secretRef:
+                name: resumematch-secrets
+          env:
+            # Embedding owns the index locally -- no HTTP hop to itself
+            # (mirrors docker-compose.yml's override of the same var).
+            - name: RM_EMBEDDING_URL
+              value: ""
+          volumeMounts:
+            - name: faiss-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: faiss-data
+          persistentVolumeClaim:
+            claimName: faiss-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faiss-pvc
+  namespace: resumematch
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

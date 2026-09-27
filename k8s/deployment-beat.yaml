@@ -1,0 +1,49 @@
+# See deployment-embedding.yaml's header comment for the container-image
+# caveat.
+#
+# replicas MUST stay 1: celery beat is a scheduler, not a worker -- it's the
+# process that enqueues the periodic "scheduled-scrape" task on the interval
+# defined by RM_SCRAPE_INTERVAL_MINUTES (see backend/scraper/celery_app.py's
+# beat_schedule). Running more than one beat process means duplicate
+# schedules firing the same task multiple times per interval. Do not put an
+# HPA or KEDA ScaledObject on this Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beat
+  namespace: resumematch
+  labels:
+    app: beat
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # avoid two beat pods overlapping mid-rollout
+  selector:
+    matchLabels:
+      app: beat
+  template:
+    metadata:
+      labels:
+        app: beat
+    spec:
+      containers:
+        - name: beat
+          image: ghcr.io/abdulahmed6/resumematch-backend:latest
+          command:
+            - celery
+            - -A
+            - backend.scraper.celery_app.celery_app
+            - beat
+            - --loglevel=info
+          envFrom:
+            - configMapRef:
+                name: resumematch-config
+            - secretRef:
+                name: resumematch-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

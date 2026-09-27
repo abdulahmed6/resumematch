@@ -1,0 +1,36 @@
+# KEDA ScaledObject: scales the worker Deployment on the depth of the
+# Celery broker's queue (a Redis list named "celery" -- confirmed as the
+# default in backend/scraper/celery_app.py, which sets no
+# task_default_queue override). This is queue-depth-based scaling, distinct
+# from the CPU-based HPA on gateway.
+#
+# Requires KEDA installed in the cluster first:
+#   helm repo add kedacore https://kedacore.github.io/charts
+#   helm install keda kedacore/keda --namespace keda --create-namespace
+#
+# `address` points at the in-cluster redis.yaml Service. If you swap in a
+# managed Redis (see redis.yaml's header comment) and it requires a
+# password, add a TriggerAuthentication referencing a key in
+# resumematch-secrets and reference it here via `authenticationRef` --
+# omitted for now since neither this repo's docker-compose Redis nor
+# redis.yaml's in-cluster Redis sets `requirepass`.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: resumematch
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 3   # matches deployment-worker.yaml's baseline `replicas`
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  pollingInterval: 15
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.resumematch.svc.cluster.local:6379
+        listName: "celery"
+        listLength: "5"           # scale out once >5 queued tasks per replica
+        activationListLength: "1"
+        databaseIndex: "0"
