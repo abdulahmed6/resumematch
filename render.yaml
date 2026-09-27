@@ -1,0 +1,44 @@
+# Render Blueprint — free-tier live demo of ResumeMatch.
+#
+# This deploys a SINGLE web service running the app in "dev mode": SQLite,
+# the in-process hashing embedder, and Celery in eager (synchronous) mode.
+# That's enough to serve a fully working UI (search, skill-gap, stats) with
+# zero cost and no external Postgres/Redis dependency.
+#
+# The full distributed architecture (3 Celery workers, Redis broker, Postgres,
+# separate embedding/scraper microservices) is what docker-compose.yml runs —
+# see the README for a local/production-style deployment of that stack.
+#
+# To use: on Render, click "New +" -> "Blueprint", point it at this repo,
+# and Render will read this file automatically.
+
+services:
+  - type: web
+    name: resumematch
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: >
+      pip install -r requirements.txt &&
+      python -m backend.scripts.seed --count 5200 &&
+      cd frontend && npm install && npm run build
+    startCommand: uvicorn backend.gateway.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: RM_ENV
+        value: production
+      - key: RM_DATABASE_URL
+        value: sqlite:///./resumematch.db
+      - key: RM_CELERY_EAGER
+        value: "true"
+      - key: RM_EMBEDDING_URL
+        value: ""
+      - key: RM_EMBEDDER_BACKEND
+        value: hashing
+      - key: RM_EMBEDDING_DIM
+        value: "384"
+      - key: RM_FAISS_INDEX_PATH
+        value: ./data/faiss.index
+      - key: RM_CORS_ORIGINS
+        value: "*"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
