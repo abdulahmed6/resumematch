@@ -1,0 +1,110 @@
+version: "3.9"
+
+x-backend-env: &backend-env
+  RM_ENV: prod
+  RM_DATABASE_URL: postgresql+psycopg2://resumematch:resumematch@postgres:5432/resumematch
+  RM_REDIS_URL: redis://redis:6379/0
+  RM_CELERY_EAGER: "false"
+  RM_EMBEDDING_URL: http://embedding:8001
+  RM_FAISS_INDEX_PATH: /data/faiss.index
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: resumematch
+      POSTGRES_PASSWORD: resumematch
+      POSTGRES_DB: resumematch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resumematch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  embedding:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: uvicorn backend.embedding.service:app --host 0.0.0.0 --port 8001
+    environment:
+      <<: *backend-env
+      # embedding service owns the index locally, so no HTTP hop to itself
+      RM_EMBEDDING_URL: ""
+    volumes:
+      - faissdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: uvicorn backend.gateway.main:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  scraper-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: uvicorn backend.scraper.service:app --host 0.0.0.0 --port 8002
+    environment:
+      <<: *backend-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+
+  # --- 3 parallel scraping worker nodes ------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: celery -A backend.scraper.celery_app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      <<: *backend-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+
+  beat:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: celery -A backend.scraper.celery_app.celery_app beat --loglevel=info
+    environment:
+      <<: *backend-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  faissdata:
