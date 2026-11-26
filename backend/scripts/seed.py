@@ -14,13 +14,16 @@ from backend.common.models import Job
 from backend.scraper.tasks import scrape_source
 
 
-def seed(count: int = 5200, batches: int = 15) -> dict:
+def seed(count: int = 5200, batches: int = 15, source: str = "synthetic") -> dict:
     init_db()
+    if source != "synthetic":
+        # Job boards return the same postings on every call, so one batch is enough.
+        batches = 1
     per_batch = max(1, count // batches)
     started = time.perf_counter()
     total_new = 0
     for i in range(batches):
-        res = scrape_source.delay("synthetic", per_batch, seed=1000 + i)
+        res = scrape_source.delay(source, per_batch, seed=1000 + i)
         payload = res.result if hasattr(res, "result") else res
         if isinstance(payload, dict):
             total_new += payload.get("new", 0)
@@ -38,5 +41,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--count", type=int, default=5200)
     parser.add_argument("--batches", type=int, default=15)
+    parser.add_argument("--source", default="synthetic", choices=["synthetic", "greenhouse", "lever"])
     args = parser.parse_args()
-    seed(args.count, args.batches)
+    seed(args.count, args.batches, args.source)

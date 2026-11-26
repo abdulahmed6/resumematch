@@ -31,7 +31,7 @@ celery_app.conf.update(
         "scheduled-scrape": {
             "task": "backend.scraper.tasks.scrape_source",
             "schedule": settings.scrape_interval_minutes * 60.0,
-            "args": ("synthetic", settings.scrape_batch_size),
+            "args": (settings.scheduled_source, settings.scrape_batch_size),
         },
     },
 )

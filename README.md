@@ -51,6 +51,10 @@ uvicorn backend.gateway.main:app --port 8000
 
 Open http://localhost:8000 — interactive API docs at http://localhost:8000/docs.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/abdulahmed6/resumematch)
+
+One-click demo on Render's free tier (`render.yaml`: dev mode, SQLite, 5,200 synthetic postings). The first request after it has been idle takes about a minute while the service wakes up.
+
 ## Production-style deployment
 
 ```bash
@@ -125,6 +129,30 @@ honest discussion of this setup's limitations vs. the full distributed stack are
 | `/api/resume/upload` | POST | Upload a `.txt` resume, get extracted skills |
 | `/api/stats` | GET | Corpus size, index size, per-source counts, query latency |
 | `/api/skills` | GET | Skill taxonomy |
+
+## Data sources
+
+| Source | What it is | Use it for |
+|---|---|---|
+| `synthetic` | `SyntheticSource`: seeded generator of realistic postings | Demos, tests and benchmarks with no network |
+| `greenhouse` | Greenhouse public job-board API (`boards-api.greenhouse.io`) | Real postings from companies listed in `RM_GREENHOUSE_BOARDS` |
+| `lever` | Lever public postings API (`api.lever.co`) | Real postings from companies listed in `RM_LEVER_COMPANIES` |
+
+Both job boards publish open roles as JSON for companies' own careers pages,
+so no API key or HTML scraping is needed. All three sources implement
+`fetch(count)` (`backend/scraper/sources.py`, `backend/scraper/job_boards.py`).
+Dedup, skill extraction, embedding and indexing are the same for every source.
+A board token that no longer exists is logged and skipped. If every board
+fails, the task retries and then lands in the dead-letter queue.
+
+```bash
+# pull real postings (dev mode, no Docker needed)
+python -m backend.scripts.seed --source greenhouse --count 500
+# or through the running stack
+curl -X POST localhost:8002/scrape -H 'content-type: application/json' -d '{"source": "lever", "count": 300}'
+```
+
+Set `RM_SCHEDULED_SOURCE=greenhouse` to have Celery Beat pull real postings on its schedule.
 
 ## Embeddings
 

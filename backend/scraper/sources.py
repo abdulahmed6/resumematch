@@ -1,9 +1,10 @@
 """Job posting sources.
 
 `SyntheticSource` generates realistic, varied job postings deterministically
-from a seed. It stands in for real job-board connectors: it exposes the same
-`fetch(count)` interface a real scraper would, so a live source (RSS, API,
-HTML scraping) can be dropped in without touching the pipeline.
+from a seed, for demos, tests and load generation without network access.
+Real postings come from `job_boards.GreenhouseSource` and
+`job_boards.LeverSource`. All sources share the same `fetch(count)` interface,
+so the pipeline doesn't care which one it is running.
 """
 import hashlib
 import random
@@ -157,7 +158,10 @@ SOURCES = {"synthetic": SyntheticSource}
 
 
 def get_source(name: str, seed: int | None = None):
-    cls = SOURCES.get(name)
+    # Imported here, not at module top: job_boards imports Posting from this module.
+    from backend.scraper.job_boards import GreenhouseSource, LeverSource
+
+    cls = {**SOURCES, "greenhouse": GreenhouseSource, "lever": LeverSource}.get(name)
     if cls is None:
         raise ValueError(f"unknown source: {name}")
     return cls(seed=seed)

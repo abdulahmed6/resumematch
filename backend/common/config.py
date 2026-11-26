@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # --- scraping ----------------------------------------------------------
     scrape_batch_size: int = 350       # postings per worker batch
     scrape_interval_minutes: int = 60  # celery-beat schedule
+    scheduled_source: str = "synthetic"  # synthetic | greenhouse | lever
+    # Real job boards (comma-separated tokens from each company's careers URL:
+    # boards.greenhouse.io/<token>, jobs.lever.co/<token>). A token that 404s
+    # is skipped with a warning, so stale entries don't break a batch.
+    greenhouse_boards: str = "stripe,airbnb,discord,figma,reddit,databricks,cloudflare,gitlab"
+    lever_companies: str = "palantir,spotify,plaid"
 
     # --- api ---------------------------------------------------------------
     cors_origins: str = "*"
