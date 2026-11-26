@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     embedder_backend: str = "hashing"  # hashing | sentence-transformers
     embedding_dim: int = 384
     faiss_index_path: str = "./data/faiss.index"
+    # Writing the index to disk copies every vector, so it is throttled to at
+    # most once per interval instead of once per /index/add call. 0 = save on
+    # every add. The DB stays the source of truth: POST /index/rebuild
+    # recovers anything added after the last save if the process crashes.
+    index_save_interval_seconds: float = 5.0
 
     # --- scraping ----------------------------------------------------------
     scrape_batch_size: int = 350       # postings per worker batch
