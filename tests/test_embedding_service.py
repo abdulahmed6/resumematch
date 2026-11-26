@@ -93,3 +93,46 @@ class TestMetricsEndpoint:
         response = client.get("/metrics")
         assert response.status_code == 200
         assert b"# HELP" in response.content
+
+
+class TestIndexSaveThrottle:
+    """index.save() rewrites the whole FAISS file, so /index/add throttles it."""
+
+    def _add(self, client, ids):
+        return client.post("/index/add", json={"ids": ids, "texts": [f"job {i}" for i in ids]})
+
+    def test_saves_at_most_once_per_interval(self, client, monkeypatch):
+        import backend.embedding.service as service
+        from backend.embedding.index import get_index
+
+        monkeypatch.setattr(service.get_settings(), "index_save_interval_seconds", 3600.0)
+        monkeypatch.setattr(service, "_last_save", 0.0)
+        monkeypatch.setattr(service.time, "monotonic", lambda: 10_000.0)
+        saves = []
+        monkeypatch.setattr(get_index(), "save", lambda: saves.append(1))
+
+        assert self._add(client, [1, 2]).status_code == 200
+        assert self._add(client, [3, 4]).status_code == 200
+        assert len(saves) == 1  # second add falls inside the interval
+
+    def test_interval_zero_saves_every_add(self, client, monkeypatch):
+        import backend.embedding.service as service
+        from backend.embedding.index import get_index
+
+        monkeypatch.setattr(service.get_settings(), "index_save_interval_seconds", 0.0)
+        saves = []
+        monkeypatch.setattr(get_index(), "save", lambda: saves.append(1))
+
+        self._add(client, [1])
+        self._add(client, [2])
+        assert len(saves) == 2
+
+    def test_shutdown_still_saves(self, monkeypatch):
+        from backend.embedding.index import get_index
+        import backend.embedding.service as service
+
+        saves = []
+        monkeypatch.setattr(get_index(), "save", lambda: saves.append(1))
+        with TestClient(service.app):
+            pass
+        assert saves  # lifespan shutdown persists whatever the throttle skipped

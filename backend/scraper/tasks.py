@@ -38,10 +38,16 @@ def scrape_source(self, source_name: str = "synthetic", count: int = 350, seed: 
 
         new_jobs: list[Job] = []
         with SessionLocal() as db:
+            # Only look up the IDs in this batch (covered by the uq_source_external index)
+            # instead of loading every external_id for the source, so dedup cost
+            # stays proportional to the batch size as the table grows.
+            batch_ids = [p.external_id for p in postings]
             existing = {
                 ext_id
-                for (ext_id,) in db.query(Job.external_id).filter(Job.source == source_name).all()
-            }
+                for (ext_id,) in db.query(Job.external_id)
+                .filter(Job.source == source_name, Job.external_id.in_(batch_ids))
+                .all()
+            } if batch_ids else set()
             for p in postings:
                 if p.external_id in existing:
                     continue

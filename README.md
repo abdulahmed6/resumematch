@@ -114,6 +114,14 @@ Real measured results (single machine, in-process hashing embedder, SQLite) and 
 honest discussion of this setup's limitations vs. the full distributed stack are in
 `docs/LOAD_TEST.md`.
 
+## Pipeline throughput
+
+`backend/scripts/pipeline_benchmark.py` measures the ingestion path end to end
+with real Celery workers, Redis, Postgres and the embedding service. On one
+4-vCPU machine, 3 workers indexed **463–501 postings/s each** (about 1,400–1,500/s
+total), steady as the index grew to 115k vectors. Setup, results and the two
+bottlenecks the benchmark found are in `docs/PIPELINE_BENCHMARK.md`.
+
 ## Key API endpoints (gateway, :8000)
 
 | Endpoint | Method | Purpose |

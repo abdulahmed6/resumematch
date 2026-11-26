@@ -63,6 +63,26 @@ def embed(req: EmbedRequest):
     return {"vectors": vecs.tolist(), "dim": int(vecs.shape[1]) if vecs.size else get_embedder().dim}
 
 
+_last_save = 0.0
+
+
+def _maybe_save(index) -> bool:
+    """Persist the index if the save interval has passed. Returns True if it saved.
+
+    faiss.write_index rewrites the whole file (~1.5 KB per vector at 384 dims),
+    so saving after every batch made ingestion cost grow with index size. With 3
+    workers, back-to-back runs fell from 1,075 to 709 postings/s as the index
+    grew from ~77k to ~140k vectors (see docs/PIPELINE_BENCHMARK.md).
+    """
+    global _last_save
+    now = time.monotonic()
+    if now - _last_save < get_settings().index_save_interval_seconds:
+        return False
+    index.save()
+    _last_save = now
+    return True
+
+
 @app.post("/index/add")
 def index_add(req: IndexAddRequest):
     if len(req.ids) != len(req.texts):
@@ -70,7 +90,7 @@ def index_add(req: IndexAddRequest):
     vecs = get_embedder().encode(req.texts)
     index = get_index()
     index.add(req.ids, vecs)
-    index.save()
+    _maybe_save(index)
     return {"added": len(req.ids), "index_size": index.size}
 
 
