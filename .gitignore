@@ -8,7 +8,7 @@ venv/
 
 # Env
 .env
-k8s/secret.yaml
+k8s/base/secret.yaml
 
 # Data / generated
 *.db
@@ -20,3 +20,6 @@ frontend/dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Redis local dump
+dump.rdb

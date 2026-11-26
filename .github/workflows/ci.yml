@@ -21,3 +21,20 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v
+
+  k8s-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Render and validate manifests
+        run: |
+          for dir in k8s/base k8s/monitoring k8s/overlays/kind; do
+            echo "== $dir"
+            kubectl kustomize "$dir" | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.32.0
+          done

@@ -30,6 +30,10 @@ spec:
       app: embedding
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: /metrics
       labels:
         app: embedding
     spec:

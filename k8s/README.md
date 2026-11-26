@@ -4,12 +4,30 @@ These manifests translate `docker-compose.yml` into a Kubernetes deployment,
 adding a CPU-based HPA on the gateway and a KEDA queue-depth ScaledObject on
 the worker pool.
 
-**Honesty note:** these manifests have been authored and YAML-syntax-checked
-(each file parses cleanly with `pyyaml`), but the environment they were
-written in has no docker/kubectl/kind/helm available, so they have **not**
-been applied to a real cluster. Treat this as a reviewed-but-untested
-starting point, and validate it yourself on kind/minikube before relying
-on it.
+## Layout
+
+| Path | What it is |
+|---|---|
+| `base/` | The app: 3 FastAPI services, Celery workers + beat, Postgres, Redis, gateway HPA, worker KEDA ScaledObject |
+| `monitoring/` | Prometheus (pod service discovery) and Grafana with the provisioned ResumeMatch dashboard |
+| `overlays/kind/` | Local cluster: base + monitoring, a locally built image, and a generated Secret for the in-cluster datastores |
+
+## Quick start on kind (local)
+
+```bash
+scripts/k8s-kind-up.sh          # cluster, image, metrics-server, KEDA, app, monitoring, seed data
+scripts/k8s-demo-autoscale.sh   # queue 150 tasks -> KEDA adds workers; search load -> HPA adds gateways
+```
+
+Needs Docker, `kind` and `kubectl`. The first run takes about 5–10 minutes.
+The demo writes `k8s-autoscale-demo.log` with queue depth and replica counts
+over time, so you can show autoscaling actually happened.
+
+The manifests render and pass `kubeconform -strict` against Kubernetes
+1.32 schemas. The KEDA ScaledObject is a CRD, so it is skipped by that check.
+I couldn't run `k8s-kind-up.sh` end to end in the environment these were
+written in (containers inside its Docker couldn't start). Run it once on your
+own machine and keep `k8s-autoscale-demo.log` as the evidence.
 
 ## Prerequisites
 
@@ -47,17 +65,14 @@ file. For a real deployment, point `secret.yaml`'s `RM_DATABASE_URL` /
 `RM_REDIS_URL` at your managed instances and don't apply `postgres.yaml` /
 `redis.yaml` at all.
 
-## Setup
+## Setup on a real cluster
 
 ```bash
-cd k8s/
-cp secret.example.yaml secret.yaml
+cp k8s/base/secret.example.yaml k8s/base/secret.yaml
 # edit secret.yaml: fill in RM_DATABASE_URL / RM_REDIS_URL for real
-kubectl apply -k .
+kubectl apply -f k8s/base/namespace.yaml -f k8s/base/secret.yaml
+kubectl apply -k k8s/base          # add: kubectl apply -k k8s/monitoring
 ```
-
-Or apply files individually in the order listed in `kustomization.yaml` if
-you're not using kustomize.
 
 ## What scales, and on what
 
@@ -72,6 +87,9 @@ you're not using kustomize.
 
 ## Known gaps / not done here
 
+- The worker pods don't expose `/metrics`, so the dashboard's scrape-task
+  panels stay empty in Kubernetes (and in docker-compose). Request rate,
+  latency and DLQ depth from the three services do show.
 - No Ingress / TLS termination -- `service-gateway.yaml` is a plain
   ClusterIP; put an Ingress or LoadBalancer Service in front of it for
   external access.

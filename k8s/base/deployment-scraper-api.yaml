@@ -1,31 +1,33 @@
 # See deployment-embedding.yaml's header comment for the container-image
-# caveat -- there's no CI build/push step yet, build and push your own first.
-#
-# Stateless: safe to run multiple replicas and to let the HPA in
-# hpa-gateway.yaml scale it on CPU.
+# caveat. Stateless control-plane API (trigger scrapes, list runs, DLQ
+# inspect/replay -- see backend/scraper/service.py); safe to run >1 replica.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gateway
+  name: scraper-api
   namespace: resumematch
   labels:
-    app: gateway
+    app: scraper-api
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: gateway
+      app: scraper-api
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8002"
+        prometheus.io/path: /metrics
       labels:
-        app: gateway
+        app: scraper-api
     spec:
       containers:
-        - name: gateway
+        - name: scraper-api
           image: ghcr.io/abdulahmed6/resumematch-backend:latest
-          command: ["uvicorn", "backend.gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          command: ["uvicorn", "backend.scraper.service:app", "--host", "0.0.0.0", "--port", "8002"]
           ports:
-            - containerPort: 8000
+            - containerPort: 8002
           envFrom:
             - configMapRef:
                 name: resumematch-config
@@ -33,20 +35,20 @@ spec:
                 name: resumematch-secrets
           readinessProbe:
             httpGet:
-              path: /api/healthz
-              port: 8000
+              path: /healthz
+              port: 8002
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /api/healthz
-              port: 8000
+              path: /healthz
+              port: 8002
             initialDelaySeconds: 15
             periodSeconds: 10
           resources:
             requests:
-              cpu: 200m
+              cpu: 100m
               memory: 256Mi
             limits:
-              cpu: "1"
+              cpu: 500m
               memory: 512Mi

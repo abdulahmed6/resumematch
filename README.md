@@ -70,10 +70,16 @@ curl -X POST localhost:8002/scrape -H 'content-type: application/json' \
 
 `k8s/` has manifests for the same architecture on a cluster — Deployments/Services
 for each stateless FastAPI service, a CPU-based HPA on the gateway, and a KEDA
-ScaledObject that scales the worker pool on Celery queue depth. See `k8s/README.md`
-for prerequisites (KEDA, metrics-server, a pushed container image) and an honest
-caveat: these manifests are authored and YAML-validated but have not been applied to
-a live cluster from this environment.
+ScaledObject that scales the worker pool on Celery queue depth. `k8s/monitoring/`
+adds Prometheus (pod service discovery) and Grafana.
+
+```bash
+scripts/k8s-kind-up.sh          # local kind cluster with everything above
+scripts/k8s-demo-autoscale.sh   # watch KEDA add workers and the HPA add gateways
+```
+
+See `k8s/README.md` for the layout and real-cluster setup. CI renders every
+overlay and validates it with `kubeconform`.
 
 ## Reliability: dead-letter queue
 

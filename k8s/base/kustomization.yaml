@@ -1,10 +1,12 @@
+# Base manifests. The resumematch-secrets Secret is NOT included: apply your
+# own (from secret.example.yaml) first, or use overlays/kind which generates
+# one for the in-cluster Postgres/Redis.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: resumematch
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml   # copy from secret.example.yaml and fill in real values first
   - postgres.yaml
   - redis.yaml
   - deployment-embedding.yaml
