@@ -33,7 +33,7 @@ export default function App() {
             <div className="header-stats">
               <div className="stat">
                 <span className="stat-value">{stats.total_jobs.toLocaleString()}</span>
-                <span className="stat-label">jobs scraped</span>
+                <span className="stat-label">postings ingested</span>
               </div>
               <div className="stat">
                 <span className="stat-value">{stats.total_indexed.toLocaleString()}</span>

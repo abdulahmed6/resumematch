@@ -112,7 +112,7 @@ export default function SearchPage() {
 
       {!resp && recent && recent.length > 0 && (
         <>
-          <p className="result-meta">Recently scraped postings</p>
+          <p className="result-meta">Recently ingested postings</p>
           <div className="job-list">
             {recent.map((job) => (
               <JobCard key={job.id} job={job} />
