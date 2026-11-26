@@ -39,7 +39,8 @@ Postgres, or Redis needed.
 ```bash
 pip install -r requirements.txt
 
-# seed 5,000+ synthetic postings through the real pipeline + build the FAISS index
+# seed synthetic postings through the real pipeline + build the FAISS index
+# (~10 s for 5,200 postings; use --count 20000 for the full demo corpus, ~30 s)
 python -m backend.scripts.seed --count 5200
 
 # build the frontend
@@ -107,12 +108,12 @@ requests at `/api/search`, reporting throughput and both client- and server-obse
 latency percentiles:
 
 ```bash
-python -m backend.scripts.load_test --jobs 5200 --requests 2000 --concurrency 50
+python -m backend.scripts.load_test --jobs 20000 --requests 2000 --concurrency 50 --workers 4
 ```
 
-Real measured results (single machine, in-process hashing embedder, SQLite) and an
-honest discussion of this setup's limitations vs. the full distributed stack are in
-`docs/LOAD_TEST.md`.
+Measured results (1.4 ms median search over 20,000 postings; ~300 req/s under
+50-way concurrency on one 4-vCPU machine) and the limits of a single-machine
+run compared with the full distributed stack are in `docs/LOAD_TEST.md`.
 
 ## Key API endpoints (gateway, :8000)
 
