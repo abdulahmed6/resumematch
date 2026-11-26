@@ -7,8 +7,8 @@ prints a fresh, honest measurement every time, it does not hard-code output.
 
 ## What the script actually does
 
-1. Seeds a fresh, throwaway SQLite database + FAISS index with 5,190
-   synthetic job postings, using the **real** `scrape_source` → `index_jobs`
+1. Seeds a fresh, throwaway SQLite database + FAISS index with the
+   requested number of synthetic job postings (`--jobs`, default 5,200), using the **real** `scrape_source` → `index_jobs`
    Celery pipeline (not a shortcut / mock).
 2. Launches the actual FastAPI gateway (`backend.gateway.main:app`) as a
    subprocess via `uvicorn`, against that seeded data.
@@ -42,52 +42,51 @@ that has not been measured and should not be assumed.
 
 ## Results
 
-Seed: 5,190 synthetic postings (15 batches of ~346, matching the project's
-"5,000+ job postings" scale), indexed through the real pipeline in ~14
-seconds.
+### 20,000 postings (current corpus size)
 
-Query set: 10 realistic multi-skill search phrases (e.g. "senior machine
-learning engineer pytorch distributed training"), round-robined across
-requests, `top_k=10`.
+Seed: 19,995 synthetic postings (15 batches of 1,333), indexed through the
+real pipeline in ~31 seconds.
 
-| Run | Workers | Requests | Concurrency | Wall time | Throughput | Server-side latency (mean / p50 / p95 / p99) |
-|---|---|---|---|---|---|---|
-| 1 | 1 | 2,000 | 50 | 11.2s | **178.6 req/s** | 5.3 / 1.7 / 34.9 / 74.6 ms |
-| 2 | 4 | 2,000 | 50 | 8.5s | **236.6 req/s** | 2.9 / 1.7 / 3.4 / 51.0 ms |
+**Unloaded search latency.** 500 sequential `POST /api/search` requests
+(`top_k=10`, 5 rotating multi-skill queries) after 20 warm-up requests,
+one uvicorn worker, no other load on the machine:
 
-The gateway's own rolling-average metric (`/api/stats.avg_query_latency_ms`,
-computed over the last 200 queries, same code path production uses) read
-**~1.6–1.8ms** in both runs.
+| Measure | p50 | p95 |
+|---|---|---|
+| Server-side search latency | **1.44 ms** | 1.97 ms |
+| Client round trip (localhost) | 2.53 ms | |
 
-### What this does and doesn't confirm
+**Under load.** `python -m backend.scripts.load_test --jobs 20000
+--requests 2000 --concurrency 50`, load generator on the same 4 vCPUs:
 
-The actual FAISS lookup against 5,190 indexed postings is consistently in
-the low single-digit milliseconds (median ~1.7ms, mean under 6ms even with
-tail latency included) — that's the number to trust for "how fast is a
-single search once it's running," and it's faster than the 40ms figure this
-project's write-up has referenced, because this in-process hashing embedder
-and flat FAISS index over ~5k vectors is simpler than a networked
-sentence-transformers call would be. It does not, by itself, validate a
-40ms figure for a sentence-transformers-backed deployment — that would need
-to be measured with `RM_EMBEDDER_BACKEND=sentence-transformers` and the
-optional dependency installed, which hasn't been done here.
+| Workers | Requests | Errors | Wall time | Throughput | Server-side latency (mean / p50 / p95 / p99) |
+|---|---|---|---|---|---|
+| 1 | 2,000 | 0 | 7.6s | **261.8 req/s** | 88.3 / 59.8 / 252.9 / 356.3 ms |
+| 4 | 2,000 | 0 | 6.6s | **301.6 req/s** | 14.5 / 5.1 / 49.9 / 224.8 ms |
 
-**Throughput (178–237 req/s)** is a measurement of this one-machine,
-one-SQLite-file, no-load-balancer setup — not a claim about the deployed
-3-node architecture's capacity, and not comparable to a scrape throughput
-figure (jobs scraped per day) since search and scrape are different
-workloads on different services. Multi-process scaling from 1→4 uvicorn
-workers was sub-linear (178 → 237 req/s, not ~700), most likely SQLite
-file-level contention across processes and/or the load generator's own
-client-side overhead running on the same 4 vCPUs as the server — that
-bottleneck has not been root-caused further, and would look different
-against Postgres.
+### 5,190 postings (original run)
 
-**Bottom line for resume-writing purposes:** the semantic-search latency
-claim is real, measured, and currently faster than what's been claimed — use
-`avg_query_latency_ms` (~1.6ms here) or re-run against a
-sentence-transformers-backed index to get a number for that specific
-configuration. Any throughput or "concurrent jobs" figure describing the
-*scraping* side (as opposed to search) should come from actually running
-the Celery worker pipeline under load, not from this script, which only
-exercises `/api/search`.
+| Workers | Requests | Concurrency | Wall time | Throughput | Server-side latency (mean / p50 / p95 / p99) |
+|---|---|---|---|---|---|
+| 1 | 2,000 | 50 | 11.2s | 178.6 req/s | 5.3 / 1.7 / 34.9 / 74.6 ms |
+| 4 | 2,000 | 50 | 8.5s | 236.6 req/s | 2.9 / 1.7 / 3.4 / 51.0 ms |
+
+## How to read these numbers
+
+- **Search itself is fast.** A flat FAISS inner-product lookup over ~20k
+  384-dim vectors, plus the SQLite row fetch, takes about 1.4 ms at the
+  median when the machine is otherwise idle.
+- **Latency under load is mostly queueing.** With 50 concurrent clients on
+  4 vCPUs that also run the load generator, requests wait for CPU. With one
+  worker, the GIL serialises them, which is why its p50 is 60 ms. Four worker
+  processes bring the p50 back to about 5 ms.
+- **Throughput scales sub-linearly** (262 → 302 req/s going from 1 to 4
+  workers). The likely causes are the load generator competing for the
+  same CPUs and SQLite file-level locking. Neither has been profiled further.
+- **This only measures the search path.** The scrape/index pipeline seeded
+  ~640 postings/s in one process (19,995 in ~31 s, Celery eager mode). The
+  distributed Celery worker pool (docker-compose or Kubernetes) has not been
+  load-tested, so there is no measured per-node scrape throughput yet.
+- **Embedder:** these runs use the in-process hashing embedder. A
+  `sentence-transformers` backend adds model inference to every query and
+  needs its own measurement.
