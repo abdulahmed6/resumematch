@@ -1,0 +1,22 @@
+# Local kind cluster: the base manifests + monitoring, using a locally built
+# image loaded with `kind load docker-image` (no registry needed) and an
+# in-cluster secret that points at postgres.yaml / redis.yaml.
+# Used by scripts/k8s-kind-up.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: resumematch
+resources:
+  - ../../base       # app, datastores, HPA, KEDA ScaledObject
+  - ../../monitoring # Prometheus + Grafana
+secretGenerator:
+  - name: resumematch-secrets
+    literals:
+      # Matches the credentials in postgres.yaml (dev-only, in-cluster).
+      - RM_DATABASE_URL=postgresql+psycopg2://resumematch:resumematch@postgres:5432/resumematch
+      - RM_REDIS_URL=redis://redis:6379/0
+generatorOptions:
+  disableNameSuffixHash: true
+images:
+  - name: ghcr.io/abdulahmed6/resumematch-backend
+    newName: resumematch-backend
+    newTag: dev   # non-latest tag -> imagePullPolicy IfNotPresent, so kind uses the loaded image

@@ -8,7 +8,7 @@ venv/
 
 # Env
 .env
-k8s/secret.yaml
+k8s/base/secret.yaml
 
 # Data / generated
 *.db
