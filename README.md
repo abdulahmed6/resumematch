@@ -140,14 +140,6 @@ RM_EMBEDDER_BACKEND=sentence-transformers uvicorn backend.embedding.service:app 
 
 Both backends implement the same interface; FAISS indexing and search are unchanged.
 
-## Data sources
-
-Postings currently come from `SyntheticSource` (`backend/scraper/sources.py`).
-It generates realistic job postings, so the pipeline, search and skill-gap
-analysis can be demoed without scraping third-party sites or needing API keys.
-Sources are pluggable: a real job-board adapter only needs a `fetch(count)`
-method and an entry in the `SOURCES` registry.
-
 ## Configuration
 
 All settings are environment variables prefixed `RM_` (see `.env.example`):
