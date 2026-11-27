@@ -1,5 +1,7 @@
 # ResumeMatch — Distributed Job-Matching Pipeline with Semantic Search
 
+**Live demo: [resumematch-tr99.onrender.com](https://resumematch-tr99.onrender.com)**. It runs on Render's free plan, so if it has been idle, the first load takes about a minute while it wakes up. The demo is a single-service build (SQLite, in-process embedder, 5,190 synthetic postings). The full distributed stack runs locally with Docker Compose (below).
+
 A full-stack job-matching platform. Job postings flow through a distributed scraping
 pipeline (Celery workers over a Redis broker), get deduplicated and enriched with
 extracted skills, then embedded into a FAISS vector index. A FastAPI gateway serves
@@ -54,7 +56,7 @@ Open http://localhost:8000 — interactive API docs at http://localhost:8000/doc
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/abdulahmed6/resumematch)
 
-One-click demo on Render's free tier (`render.yaml`: dev mode, SQLite, 5,200 synthetic postings). The first request after it has been idle takes about a minute while the service wakes up.
+One-click demo on Render's free tier (`render.yaml`: dev mode, SQLite, 5,200 synthetic postings). The first request after it has been idle takes about a minute while the service wakes up. This is how the [live demo](https://resumematch-tr99.onrender.com) is deployed.
 
 ## Production-style deployment
 
@@ -124,6 +126,8 @@ python -m backend.scripts.load_test --jobs 20000 --requests 2000 --concurrency 5
 Measured results (1.4 ms median search over 20,000 postings; ~300 req/s under
 50-way concurrency on one 4-vCPU machine) and the limits of a single-machine
 run compared with the full distributed stack are in `docs/LOAD_TEST.md`.
+
+These are local benchmark numbers. The free-tier live demo runs on a fraction of a shared CPU, so its search latency is higher and varies (single-digit to a few hundred ms).
 
 ## Pipeline throughput
 
